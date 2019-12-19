@@ -1,0 +1,194 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+### This is the analysis of the WM-MA-math ability manuscript
+
+# version 1.0
+
+## Table of contentes
+
+1.  Load libraries
+
+2.  Import, prepare data  & descriptives
+
+  2.1 Data plots
+
+3.  Estimate networks
+
+  3.1 Network descriptives
+
+  3.2 Network plot
+
+4.  Network stability
+
+4.1 Plot network stability
+
+5.  SEM model
+
+5.1 Model 1 WM as two systems
+
+5.2 Model 2 WM as a single system
+
+5.3 Models plots
+
+
+## 1. Load libraries
+
+````{r,echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+  library("qgraph")
+  library("dplyr")
+  library("bootnet")
+  library("mgm")
+  library("lavaan")
+  library("Hmisc")
+  library("lavaanPlot")
+  library("moments")
+  library("readr")
+  library("corrplot")
+  library("semPlot")
+```
+
+## 2.  Import, prepare data  & descriptives
+
+```{r, echo=FALSE, eval=TRUE, results='hold',,message=FALSE}
+  setwd("/home/nachshon/Documents/NumericalHaifa/WM_MAProject")
+  data <- read_csv("MEforR.csv")
+  
+  print("skewness")
+  skewness(data)
+  
+  print("kurtosis")
+  kurtosis(data)
+
+  data1 <- data[-c(1)]
+  print("Means and SDs")
+  colMeans(data1, na.rm=T)
+  as.vector(sapply(data1, sd, na.rm=T))
+  print("correlation matrix")
+  
+  corr <- rcorr(as.matrix(data1))
+  print(corr)
+```
+### 2.1 data plots
+```{r, echo=FALSE}
+hist(data)
+corrplot(corr[["r"]], method = "number", type="lower")
+```
+
+## 3.  Estimate networks
+```{r, echo=FALSE, eval=TRUE, results='hold',,message=FALSE}
+ network1 <- estimateNetwork(data1, 
+                              default="EBICglasso",
+                              corMethod = "cor_auto",
+                              tuning = 0.5)
+  print("Partial correlation matrix")
+  network1$graph
+```
+
+### 3.1 network descriptive
+
+```{r,echo=FALSE, eval=TRUE,message=FALSE}
+  fit1 <- mgm(data1, type=rep('g', 7), lev=rep(1,7)) 
+  pred1 <- predict(fit1, data1, error.continuous='VarExpl')
+
+```
+```{r,echo=FALSE, eval=TRUE,message=FALSE,results='hold'}
+print("Mean predictive value of variables: ") 
+  mean(pred1$error$R2)
+  print("Max predictor: ") 
+  max(pred1$error$R2)
+  print("Min predictor: ")
+  min(pred1$error$R2)
+```
+
+
+### 3.2 Network plot
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+network1G <- plot(network1, layout = , theme="colorblind", pie=pred1$error$R2,
+                    border.width=2, vsize=10, 
+                  border.color='#555555', label.color="#555555", color="#EEEEEE")
+
+  centralityPlot(network1, include =c("Strength","Closeness","Betweenness"))
+```
+
+
+## 4. Network stability 
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE,error=FALSE,results='hide'}
+  invisible(boot1a <- bootnet(network1, nBoots = 1000, nCores = 12))
+  invisible(boot1b <- bootnet(network1, nBoots = 1000, type = "case",  nCores = 12))
+  
+  invisible(cs <- corStability(boot1b)) 
+  
+   
+```
+```{r, echo=FALSE, eval=TRUE, results='hold'}
+print(cs)
+```
+
+### 4.1 Plot network stability
+```{r, echo=FALSE}
+  plot(boot1a)
+  
+  plot(boot1b, legend = FALSE)
+  
+```
+
+## 5. Sem models
+```{r, echo=FALSE}
+ 
+  model1 <- '
+  # measurement model
+    WM =~ Nspan + Opposites
+    MathAbility =~ Fluency + Calculation
+  # regressions
+    MathAbility ~ 1*WM + MARS + PSWQ + Colors
+  # residual correlations
+    WM ~~ MARS
+    WM ~~ PSWQ
+    MARS ~~ PSWQ
+    Colors ~~ WM
+    Colors ~~ PSWQ
+    Colors ~~ MARS
+  '
+  model2 <- '
+    # measurement model
+    WM =~ Nspan + Colors + Opposites
+    MathAbility =~ Fluency + Calculation
+  # regressions
+    MathAbility ~ WM + MARS + PSWQ
+  # residual correlations
+    WM ~~ MARS
+    WM ~~ PSWQ
+    MARS ~~ PSWQ
+  '
+```
+### 5.1 Model 1 WM as two systems
+```{r, echo=FALSE, eval=TRUE, results='hold'}
+  fit1 <-  lavaan::sem(model1, data=data1, estimator="WLSM")
+  summary(fit1, standardized=TRUE, fit.measures=T) 
+  inspect(fit1,"r2")
+```
+
+### 5.2 Model 2 WM as a single system
+```{r, echo=FALSE, eval=TRUE, results='hold'}
+  fit2 <-  lavaan::sem(model2, data=data1, estimator="WLSM")
+  summary(fit2, standardized=TRUE, fit.measures=T) 
+  inspect(fit2,"r2")
+```
+
+### 5.3 Model plots
+
+
+```{r, echo=FALSE}
+lavaanPlot(model = fit1, 
+             node_options = list(shape = "box", fontname = "Helvetica"), 
+             edge_options = list(color = "grey"), coefs = TRUE, stand = TRUE, sig = 0.05)
+  
+lavaanPlot(model = fit2,
+             node_options = list(shape = "box", fontname = "Helvetica"), 
+             edge_options = list(color = "grey"), coefs = TRUE, stand = TRUE, sig = 0.05)
+```
